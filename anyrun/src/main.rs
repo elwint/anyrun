@@ -12,10 +12,11 @@ use std::{
 use abi_stable::std_types::{ROption, RVec};
 use anyrun_interface::{HandleResult, Match, PluginInfo, PluginRef, PollResult};
 use clap::{Parser, ValueEnum};
+use clipboard_ext::prelude::*;
+use clipboard_ext::x11_fork::ClipboardContext;
 use gtk::{gdk, gdk_pixbuf, gio, glib, prelude::*};
 use nix::unistd;
 use serde::Deserialize;
-use wl_clipboard_rs::copy;
 
 #[anyrun_macros::config_args]
 #[derive(Deserialize)]
@@ -277,13 +278,10 @@ fn main() {
             }
             // Child process starts serving copy requests
             Ok(unistd::ForkResult::Child) => {
-                let mut opts = copy::Options::new();
-                opts.foreground(true);
-                opts.copy(
-                    copy::Source::Bytes(bytes.clone().into_boxed_slice()),
-                    copy::MimeType::Autodetect,
-                )
-                .expect("Failed to serve copy bytes");
+                let mut ctx = ClipboardContext::new().unwrap();
+
+                let content = std::str::from_utf8(bytes).unwrap();
+                ctx.set_contents(content.to_string()).unwrap();
             }
             Err(why) => {
                 eprintln!("Failed to fork for copy sharing: {}", why);
@@ -300,31 +298,35 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<RuntimeData>>) {
         .name(style_names::WINDOW)
         .build();
 
-    // Init GTK layer shell
-    gtk_layer_shell::init_for_window(&window);
+    window.set_type_hint(gdk::WindowTypeHint::Dialog);
+    window.set_position(gtk::WindowPosition::CenterAlways);
+    window.fullscreen();
 
-    // Make layer-window fullscreen
-    gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Top, true);
-    gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Bottom, true);
-    gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Left, true);
-    gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Right, true);
+    // // Init GTK layer shell
+    // gtk_layer_shell::init_for_window(&window);
+    //
+    // // Make layer-window fullscreen
+    // gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Top, true);
+    // gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Bottom, true);
+    // gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Left, true);
+    // gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Right, true);
+    //
+    // gtk_layer_shell::set_namespace(&window, "anyrun");
 
-    gtk_layer_shell::set_namespace(&window, "anyrun");
-
-    if runtime_data.borrow().config.ignore_exclusive_zones {
-        gtk_layer_shell::set_exclusive_zone(&window, -1);
-    }
-
-    gtk_layer_shell::set_keyboard_mode(&window, gtk_layer_shell::KeyboardMode::Exclusive);
-
-    match runtime_data.borrow().config.layer {
-        Layer::Background => {
-            gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Background)
-        }
-        Layer::Bottom => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Bottom),
-        Layer::Top => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Top),
-        Layer::Overlay => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Overlay),
-    };
+    // if runtime_data.borrow().config.ignore_exclusive_zones {
+    //     gtk_layer_shell::set_exclusive_zone(&window, -1);
+    // }
+    //
+    // gtk_layer_shell::set_keyboard_mode(&window, gtk_layer_shell::KeyboardMode::Exclusive);
+    //
+    // match runtime_data.borrow().config.layer {
+    //     Layer::Background => {
+    //         gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Background)
+    //     }
+    //     Layer::Bottom => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Bottom),
+    //     Layer::Top => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Top),
+    //     Layer::Overlay => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Overlay),
+    // };
 
     // Try to load custom CSS, if it fails load the default CSS
     let provider = gtk::CssProvider::new();
@@ -647,10 +649,14 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<RuntimeData>>) {
                 let y = runtime_data.config.y.to_val(event.size().1) - height / 2;
 
                 // The GtkFixed widget is used for absolute positioning of the main box
-                let fixed = gtk::Fixed::builder().build();
+                let fixed = gtk::Fixed::builder()
+                    .valign(gtk::Align::Start)
+                    .halign(gtk::Align::Center)
+                    .build();
                 let main_vbox = gtk::Box::builder()
                     .orientation(gtk::Orientation::Vertical)
                     .halign(gtk::Align::Center)
+                    .valign(gtk::Align::Center)
                     .vexpand(false)
                     .width_request(width)
                     .height_request(height)
