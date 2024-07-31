@@ -298,35 +298,45 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<RuntimeData>>) {
         .name(style_names::WINDOW)
         .build();
 
+    // Set window type hint to dialog
     window.set_type_hint(gdk::WindowTypeHint::Dialog);
+
+    // Center the window
     window.set_position(gtk::WindowPosition::CenterAlways);
+
+    // Set the window to be fullscreen
     window.fullscreen();
 
-    // // Init GTK layer shell
-    // gtk_layer_shell::init_for_window(&window);
-    //
-    // // Make layer-window fullscreen
-    // gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Top, true);
-    // gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Bottom, true);
-    // gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Left, true);
-    // gtk_layer_shell::set_anchor(&window, gtk_layer_shell::Edge::Right, true);
-    //
-    // gtk_layer_shell::set_namespace(&window, "anyrun");
+    // Get the screen's size and set it as the default size for the window
+    let display = gdk::Display::default().unwrap();
+    let monitor = display.primary_monitor().unwrap();
+    let geometry = monitor.geometry();
+    let width = geometry.width();
+    let height = geometry.height();
+    window.set_default_size(width, height);
 
-    // if runtime_data.borrow().config.ignore_exclusive_zones {
-    //     gtk_layer_shell::set_exclusive_zone(&window, -1);
-    // }
-    //
-    // gtk_layer_shell::set_keyboard_mode(&window, gtk_layer_shell::KeyboardMode::Exclusive);
-    //
-    // match runtime_data.borrow().config.layer {
-    //     Layer::Background => {
-    //         gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Background)
-    //     }
-    //     Layer::Bottom => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Bottom),
-    //     Layer::Top => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Top),
-    //     Layer::Overlay => gtk_layer_shell::set_layer(&window, gtk_layer_shell::Layer::Overlay),
-    // };
+    // Make the window always on top
+    window.set_keep_above(true);
+
+    // Disable window resizing
+    window.set_resizable(false);
+
+    // Borderless window
+    window.set_decorated(false);
+
+    // Set keyboard focus mode
+    window.set_accept_focus(true);
+
+    // Set window layer and background
+    window.set_app_paintable(true);
+    let gdk_screen = gtk::prelude::GtkWindowExt::screen(&window).unwrap();
+    let visual = gdk_screen.rgba_visual();
+    window.set_visual(visual.as_ref());
+    window.connect_draw(|_, cr| {
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.5); // Semi-transparent black background
+        cr.paint().unwrap();
+        Inhibit(false)
+    });
 
     // Try to load custom CSS, if it fails load the default CSS
     let provider = gtk::CssProvider::new();
@@ -649,14 +659,10 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<RuntimeData>>) {
                 let y = runtime_data.config.y.to_val(event.size().1) - height / 2;
 
                 // The GtkFixed widget is used for absolute positioning of the main box
-                let fixed = gtk::Fixed::builder()
-                    .valign(gtk::Align::Start)
-                    .halign(gtk::Align::Center)
-                    .build();
+                let fixed = gtk::Fixed::builder().build();
                 let main_vbox = gtk::Box::builder()
                     .orientation(gtk::Orientation::Vertical)
                     .halign(gtk::Align::Center)
-                    .valign(gtk::Align::Center)
                     .vexpand(false)
                     .width_request(width)
                     .height_request(height)
