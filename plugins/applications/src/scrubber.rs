@@ -87,7 +87,7 @@ impl DesktopEntry {
                                         .collect::<Vec<_>>()
                                 })
                                 .unwrap_or_default(),
-                            desc: None,
+                            desc: map.get("Comment").map(|comment| comment.to_string()),
                             icon: map
                                 .get("Icon")
                                 .unwrap_or(&"application-x-executable")

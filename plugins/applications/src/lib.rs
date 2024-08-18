@@ -113,12 +113,12 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .entries
         .iter()
         .filter_map(|(entry, id)| {
-            let app_score = match &entry.desc {
-                None => matcher.fuzzy_match(&entry.name, &input).unwrap_or(0),
-                Some(val) => matcher
-                    .fuzzy_match(&format!("{} {}", &val, &entry.name).to_string(), &input)
-                    .unwrap_or(0),
+            let name_score = matcher.fuzzy_match(&entry.name, &input).unwrap_or(0);
+            let comment_score = match &entry.desc {
+                None => 0,
+                Some(comment) => matcher.fuzzy_match(&comment, &input).unwrap_or(0),
             };
+            let exec_score = matcher.fuzzy_match(&entry.exec, &input).unwrap_or(0);
 
             let keyword_score = entry
                 .keywords
@@ -126,12 +126,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
                 .map(|keyword| matcher.fuzzy_match(keyword, &input).unwrap_or(0))
                 .sum::<i64>();
 
-            let mut score = (app_score * 25 + keyword_score) - entry.offset;
-
-            // prioritize actions
-            if entry.desc.is_some() {
-                score = score * 2;
-            }
+            let score = (name_score * 150 + comment_score * 50 + 25 * exec_score + keyword_score) - entry.offset;
 
             if score > 0 {
                 Some((entry, *id, score))
