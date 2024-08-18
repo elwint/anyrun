@@ -1677,6 +1677,8 @@ dependencies = [
  "anyrun-plugin",
  "reqwest",
  "rink-core",
+ "ron",
+ "serde",
 ]
 
 [[package]]
