@@ -19,5 +19,6 @@ Config(
   // The terminal used for running terminal based desktop entries, if left as `None` a static list of terminals is used
   // to determine what terminal to use.
   terminal: Some("alacritty"),
+  ignore_prefix: ":",
 )
 ```

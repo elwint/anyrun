@@ -10,6 +10,7 @@ pub struct Config {
     desktop_actions: bool,
     max_entries: usize,
     terminal: Option<String>,
+    ignore_prefix: String,
 }
 
 impl Default for Config {
@@ -18,6 +19,7 @@ impl Default for Config {
             desktop_actions: false,
             max_entries: 5,
             terminal: None,
+            ignore_prefix: "".to_string(),
         }
     }
 }
@@ -108,6 +110,10 @@ pub fn init(config_dir: RString) -> State {
 
 #[get_matches]
 pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
+    if !state.config.ignore_prefix.is_empty() && input.starts_with(&state.config.ignore_prefix) {
+        return RVec::new();
+    }
+
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
     let mut entries = state
         .entries
