@@ -291,6 +291,57 @@ fn main() {
     }
 }
 
+fn find_selected_match_and_view(
+    runtime_data: &Rc<RefCell<RuntimeData>>,
+) -> Option<(gtk::ListBoxRow, PluginView)> {
+    runtime_data
+        .borrow()
+        .plugins
+        .iter()
+        .find_map(|view| view.list.selected_row().map(|row| (row, view.clone())))
+}
+
+fn handle_selected_match_action(
+    selected_match: &gtk::ListBoxRow,
+    plugin_view: &PluginView,
+    runtime_data: &Rc<RefCell<RuntimeData>>,
+    entry: &gtk::Entry,
+    window: &gtk::ApplicationWindow,
+) -> Inhibit {
+    let mut runtime_data_clone = runtime_data.borrow_mut();
+
+    match plugin_view.plugin.handle_selection()(unsafe {
+        (*selected_match.data::<Match>("match").unwrap().as_ptr()).clone()
+    }) {
+        HandleResult::Close => {
+            window.close();
+            Inhibit(true)
+        }
+        HandleResult::Refresh(exclusive) => {
+            if exclusive {
+                runtime_data_clone.exclusive = Some(plugin_view.clone());
+            } else {
+                runtime_data_clone.exclusive = None;
+            }
+            mem::drop(runtime_data_clone); // Drop the mutable borrow
+            refresh_matches(entry.text().into(), runtime_data.clone());
+            Inhibit(false)
+        }
+        HandleResult::Copy(bytes) => {
+            runtime_data_clone.post_run_action = PostRunAction::Copy(bytes.into());
+            window.close();
+            Inhibit(true)
+        }
+        HandleResult::Stdout(bytes) => {
+            if let Err(why) = io::stdout().lock().write_all(&bytes) {
+                eprintln!("Error outputting content to stdout: {}", why);
+            }
+            window.close();
+            Inhibit(true)
+        }
+    }
+}
+
 fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<RuntimeData>>) {
     // Create the main window
     let window = gtk::ApplicationWindow::builder()
@@ -578,67 +629,39 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<RuntimeData>>) {
             }
             // Handle when the selected match is "activated"
             constants::Return => {
-                let mut _runtime_data_clone = runtime_data_clone.borrow_mut();
-
-                let (selected_match, plugin_view) = match _runtime_data_clone
-                    .plugins
-                    .iter()
-                    .find_map(|view| view.list.selected_row().map(|row| (row, view)))
-                {
-                    Some(selected) => selected,
-                    None => {
-                        return Inhibit(false);
-                    }
-                };
-
-                // Perform actions based on the result of handling the selection
-                match plugin_view.plugin.handle_selection()(unsafe {
-                    (*selected_match.data::<Match>("match").unwrap().as_ptr()).clone()
-                }) {
-                    HandleResult::Close => {
-                        window.close();
-                        Inhibit(true)
-                    }
-                    HandleResult::Refresh(exclusive) => {
-                        if exclusive {
-                            _runtime_data_clone.exclusive = Some(plugin_view.clone());
-                        } else {
-                            _runtime_data_clone.exclusive = None;
-                        }
-                        mem::drop(_runtime_data_clone); // Drop the mutable borrow
-                        refresh_matches(entry_clone.text().into(), runtime_data_clone.clone());
-                        Inhibit(false)
-                    }
-                    HandleResult::Copy(bytes) => {
-                        _runtime_data_clone.post_run_action = PostRunAction::Copy(bytes.into());
-                        window.close();
-                        Inhibit(true)
-                    }
-                    HandleResult::Stdout(bytes) => {
-                        if let Err(why) = io::stdout().lock().write_all(&bytes) {
-                            eprintln!("Error outputting content to stdout: {}", why);
-                        }
-                        window.close();
-                        Inhibit(true)
-                    }
+                if let Some((selected_match, plugin_view)) = find_selected_match_and_view(&runtime_data_clone) {
+                    handle_selected_match_action(&selected_match, &plugin_view, &runtime_data_clone, &entry_clone, window)
+                } else {
+                    Inhibit(false)
                 }
             }
             _ => Inhibit(false),
         }
     });
 
-    // If the option is enabled, close the window when any click is received
-    // that is outside the bounds of the main box
-    if runtime_data.borrow().config.close_on_click {
-        window.connect_button_press_event(move |window, event| {
-            if event.window() == window.window() {
+    window.connect_button_press_event({
+        let runtime_data_clone = runtime_data.clone();
+        let entry_clone = entry.clone();
+        move |window, event| {
+            // If the option is enabled, close the window when any click is received
+            // that is outside the bounds of the main box
+            if runtime_data_clone.borrow().config.close_on_click && event.window() == window.window() {
                 window.close();
-                Inhibit(true)
-            } else {
-                Inhibit(false)
+                return Inhibit(true);
             }
-        });
-    }
+
+            if event.event_type() == gdk::EventType::DoubleButtonPress && event.button() == 1 {
+                if let Some((selected_match, plugin_view)) = find_selected_match_and_view(&runtime_data_clone) {
+                    if selected_match.window() != event.window() {
+                        return Inhibit(false);
+                    }
+
+                    return handle_selected_match_action(&selected_match, &plugin_view, &runtime_data_clone, &entry_clone, window)
+                }
+            }
+            Inhibit(false)
+        }
+    });
 
     // Only create the widgets once to avoid issues
     let configure_once = Once::new();
